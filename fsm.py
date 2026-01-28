@@ -3,10 +3,11 @@
 # Streamlit App: FSM Imputation for WL/SF (Upload File Only)
 # - Upload Excel/CSV
 # - Choose datetime + value column
-# - TAB 1: Raw time series (Plotly + HTML + PNG via Matplotlib)
-# - TAB 2: Missing data summary (Monthly / Yearly) + downloads
+# - TAB 1: Raw time series (Plotly + HTML + PNG via Matplotlib) + SHOW PNG
+# - TAB 2: Missing data summary (Monthly / Yearly) + downloads + SHOW PNG (with % labels)
 # - TAB 3: FSM Imputation + CSV download
 #          - Time series plot: Original + FSM IMPUTED SEGMENTS ONLY (red dashed)
+#            + SHOW PNG
 #          - Monthly seasonality: Original vs FULL infilled series (blue vs red)
 #
 # NOTE: Plotly PNG export (fig.to_image) is disabled because Streamlit Cloud
@@ -75,13 +76,28 @@ def line_png_bytes(
     return buf.getvalue()
 
 
-def bar_png_bytes(x, y, title, xlab, ylab, figsize=(12, 4), rotate_xticks=45):
+def bar_png_bytes(x, y, title, xlab, ylab, figsize=(12, 4), rotate_xticks=45, show_value_labels=False):
     fig, ax = plt.subplots(figsize=figsize)
-    ax.bar(x, y)
+    bars = ax.bar(x, y)
     ax.set_title(title)
     ax.set_xlabel(xlab)
     ax.set_ylabel(ylab)
     ax.grid(True, axis="y", alpha=0.3)
+
+    # ✅ Add value labels on bars (Missing %)
+    if show_value_labels:
+        for b in bars:
+            h = b.get_height()
+            if np.isnan(h):
+                continue
+            ax.text(
+                b.get_x() + b.get_width() / 2,
+                h,
+                f"{h:.1f}%",
+                ha="center",
+                va="bottom",
+                fontsize=9
+            )
 
     for tick in ax.get_xticklabels():
         tick.set_rotation(rotate_xticks)
@@ -423,7 +439,7 @@ st.write(f"Detected variable type: **{data_type}** → y-axis label: **{y_label}
 tab1, tab2, tab3 = st.tabs(["1) Raw Plot", "2) Missing Summary", "3) FSM Imputation"])
 
 # ============================================================
-# TAB 1) Raw time series (HTML + PNG)
+# TAB 1) Raw time series (HTML + PNG) + SHOW PNG
 # ============================================================
 with tab1:
     st.header("1) Raw Time Series Plot")
@@ -455,6 +471,10 @@ with tab1:
         colors=["blue"],
         linestyles=["-"]
     )
+
+    # ✅ SHOW PNG inside app
+    st.image(raw_png, caption="Raw Time Series (PNG via Matplotlib)", use_container_width=True)
+
     st.download_button(
         "Download raw plot (PNG)",
         data=raw_png,
@@ -463,7 +483,7 @@ with tab1:
     )
 
 # ============================================================
-# TAB 2) Missing data summary (Monthly / Yearly)
+# TAB 2) Missing data summary (Monthly / Yearly) + SHOW PNG WITH % LABELS
 # ============================================================
 with tab2:
     st.header("2) Missing Data Summary (Monthly / Yearly)")
@@ -486,6 +506,18 @@ with tab2:
         )
         st.plotly_chart(miss_fig, use_container_width=True)
 
+        miss_png = bar_png_bytes(
+            x=monthly_summary["YearMonth"].tolist(),
+            y=monthly_summary["Missing_Percentage"].tolist(),
+            title=f"Monthly Missing Data Percentage: {val_col}",
+            xlab="Year-Month",
+            ylab="Missing Percentage (%)",
+            show_value_labels=True
+        )
+
+        # ✅ SHOW PNG inside app
+        st.image(miss_png, caption="Monthly Missing % (PNG with labels)", use_container_width=True)
+
         st.download_button(
             "Download MONTHLY missing summary (CSV)",
             data=monthly_summary.to_csv(index=False).encode("utf-8"),
@@ -497,14 +529,6 @@ with tab2:
             data=miss_fig.to_html(include_plotlyjs="cdn").encode("utf-8"),
             file_name=f"{val_col}_monthly_missing_plot.html",
             mime="text/html"
-        )
-
-        miss_png = bar_png_bytes(
-            x=monthly_summary["YearMonth"].tolist(),
-            y=monthly_summary["Missing_Percentage"].tolist(),
-            title=f"Monthly Missing Data Percentage: {val_col}",
-            xlab="Year-Month",
-            ylab="Missing Percentage (%)"
         )
         st.download_button(
             "Download MONTHLY missing plot (PNG)",
@@ -528,6 +552,19 @@ with tab2:
         )
         st.plotly_chart(miss_fig_y, use_container_width=True)
 
+        miss_png_y = bar_png_bytes(
+            x=yearly_summary["Year"].astype(str).tolist(),
+            y=yearly_summary["Missing_Percentage"].tolist(),
+            title=f"Yearly Missing Data Percentage: {val_col}",
+            xlab="Year",
+            ylab="Missing Percentage (%)",
+            rotate_xticks=0,
+            show_value_labels=True
+        )
+
+        # ✅ SHOW PNG inside app
+        st.image(miss_png_y, caption="Yearly Missing % (PNG with labels)", use_container_width=True)
+
         st.download_button(
             "Download YEARLY missing summary (CSV)",
             data=yearly_summary.to_csv(index=False).encode("utf-8"),
@@ -540,15 +577,6 @@ with tab2:
             file_name=f"{val_col}_yearly_missing_plot.html",
             mime="text/html"
         )
-
-        miss_png_y = bar_png_bytes(
-            x=yearly_summary["Year"].astype(str).tolist(),
-            y=yearly_summary["Missing_Percentage"].tolist(),
-            title=f"Yearly Missing Data Percentage: {val_col}",
-            xlab="Year",
-            ylab="Missing Percentage (%)",
-            rotate_xticks=0
-        )
         st.download_button(
             "Download YEARLY missing plot (PNG)",
             data=miss_png_y,
@@ -557,7 +585,7 @@ with tab2:
         )
 
 # ============================================================
-# TAB 3) FSM Imputation (CSV + plots)
+# TAB 3) FSM Imputation + SHOW PNGs (segments) + seasonality already shown
 # ============================================================
 with tab3:
     st.header("3) FSM Imputation")
@@ -645,6 +673,10 @@ with tab3:
             colors=["blue", "red"],
             linestyles=["-", "--"]
         )
+
+        # ✅ SHOW PNG inside app
+        st.image(png2, caption="Original + FSM Imputed Segments (PNG via Matplotlib)", use_container_width=True)
+
         st.download_button(
             "Download segments plot (PNG)",
             data=png2,
